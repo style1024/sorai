@@ -44,8 +44,8 @@ class SignUp(commands.Cog):
 
     @commands.slash_command(description='報名參加比賽')
     async def 報名(self, ctx, 隊長r6id: str, 隊員dcid: discord.Member, 隊員r6id: str, 隊名: str):
-        await ctx.response.defer()
         隊長dcid = ctx.author
+        await ctx.defer(ephemeral=True)
 
         ## 確認是否有重複報名
         if len(signupsheet.find(隊長dcid.name)) != 0:
@@ -69,6 +69,10 @@ class SignUp(commands.Cog):
         ## 提供身分組給隊長
         leader_role = ctx.guild.get_role(1230786345291616292)
         await 隊長dcid.add_roles(leader_role)
+
+        ## 修改報名人名稱
+        await 隊長dcid.edit(nick=隊長r6id)
+        await 隊員dcid.edit(nick=隊員r6id)
 
         ## 寫進Google Sheet
         signupsheet.update_value(f'A{row}', f'{隊名}')  
@@ -97,7 +101,7 @@ class SignUp(commands.Cog):
 
     @commands.slash_command()
     async def 取消參賽(self, ctx):
-        await ctx.response.defer()
+        await ctx.defer(ephemeral=True)
         ## 隊長身分組
         role = ctx.guild.get_role(1230786345291616292)
         member = ctx.author
@@ -120,15 +124,15 @@ class SignUp(commands.Cog):
                 team_role = discord.utils.get(ctx.guild.roles, name=team_role_value)
                 await team_role.delete()
                 await member.remove_roles(role)
-                await ctx.followup.send("您已成功退出比赛。", ephemeral=True)
+                await ctx.respond("您已成功退出比赛。", ephemeral=True)
 
             elif view.value is False:
-                await ctx.followup.send("操作已取消。", ephemeral=True)
+                await ctx.respond("操作已取消。", ephemeral=True)
 
             else:
-                await ctx.followup.send("超過時間，操作結束。", ephemeral=True)
+                await ctx.respond("超過時間，操作結束。", ephemeral=True)
         else:
-            await ctx.followup.send("你不是隊長無法操作這個動作", ephemeral=True)
+            await ctx.respond("你不是隊長無法操作這個動作", ephemeral=True)
 
 # 報到用
 class CheckInView(View):
@@ -163,41 +167,6 @@ class ConfirmationView(View):
     async def cancel(self, button: Button, interaction: discord.Interaction):
         self.value = False
         self.stop()
-
-# 報名用按鈕
-class SignUpView(discord.ui.Modal):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.add_item(discord.ui.InputText(label="隊伍名稱", placeholder="請輸入隊伍名稱"))
-        self.add_item(discord.ui.InputText(label="隊員1 DiscordID", placeholder="預設值，可修改"))
-        self.add_item(discord.ui.InputText(label="隊員1 遊戲ID", placeholder="請輸入隊員1的遊戲ID"))
-        self.add_item(discord.ui.InputText(label="隊員2 DiscordID", placeholder="請輸入隊員2的DiscordID"))
-        self.add_item(discord.ui.InputText(label="隊員2 遊戲ID", placeholder="請輸入隊員2的遊戲ID"))
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-
-        embed = discord.Embed(title="報名成功!", color=discord.Color.random())
-        embed.add_field(name="請確認下方資訊是否有誤\n如有問題或是需要跟換隊員請通知官方人員", value="", inline=False)
-        embed.add_field(name="隊伍名稱", value=self.children[0].value, inline=False)
-        embed.add_field(name="隊員1 DiscordID", value=self.children[1].value, inline=False)
-        embed.add_field(name="隊員1 遊戲ID", value=self.children[2].value, inline=False)
-        embed.add_field(name="隊員2 DiscordID", value=self.children[3].value, inline=False)
-        embed.add_field(name="隊員2 遊戲ID", value=self.children[4].value, inline=False)
-
-        values = signupsheet.get_all_values()
-        df = pd.DataFrame(values[0:], columns=values[0])
-        end_row = df[df["隊伍名稱"].isin([""])].head(1).index.values[0]
-        row = end_row + 1  #最後一欄
-
-        signupsheet.update_value(f'A{row}', f'{self.children[0].value}')  
-        signupsheet.update_value(f'B{row}', f'{self.children[1].value}') 
-        signupsheet.update_value(f'C{row}', f'{self.children[2].value}')  
-        signupsheet.update_value(f'D{row}', f'{self.children[3].value}')  
-        signupsheet.update_value(f'E{row}', f'{self.children[4].value}') 
-        signupsheet.update_value(f'F{row}', '參賽')   
-
-        await interaction.followup.send(embeds=[embed], ephemeral=True)
 
 def setup(bot):
     bot.add_cog(SignUp(bot))

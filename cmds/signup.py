@@ -20,28 +20,73 @@ sheet = gc.open_by_url(f'https://docs.google.com/spreadsheets/d/{id}/edit?usp=sh
 signupsheet =  sheet[0]
 checkin = sheet[1]
 
+## Google Sheet
+values = signupsheet.get_all_values()
+df = pd.DataFrame(values[0:], columns=values[0])
+end_row = df[df["隊伍名稱"].isin([""])].head(1).index.values[0]
+row = end_row + 1  #最後一欄
+
 class SignUp(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.slash_command()
+    @commands.slash_command(description='報名程序說明')
     async def 報名須知(self, ctx):
         Embed = discord.Embed(title="SORAI Unite",
                             description="SORAI Unite社群比賽報名須知",
                             color=discord.Color.random())
-        # Embed.set_thumbnail(url="https://i.imgur.com/lyjRujt.gif")
         Embed.add_field(name="/報名", value="根據畫面指示輸入資料完成報名手續，完成後會有成功訊息", inline=False)
         Embed.add_field(name="/取消參賽",value="點選點選畫面上按鈕完成取消參賽手續",inline=False)
         Embed.add_field(name="", value="", inline=False)
         Embed.add_field(name="如有任何問題都可以詢問管理人員", value="", inline=False)
-        await ctx.respond(embed=Embed)
+        await ctx.respond(embed=Embed, ephemeral=True)
 
-    ## TODO : 1.驗證參賽者是否在DC裡面  2. 確認是否有重複報名  3. 隊名是否有重複 
-    @commands.slash_command()
-    async def 報名(self, ctx):
-        modal = SignUpView(title="Unite社群比賽報名表單")
-        await ctx.send_modal(modal)
+    @commands.slash_command(description='報名參加比賽')
+    async def 報名(self, ctx, 隊長r6id: str, 隊員dcid: discord.Member, 隊員r6id: str, 隊名: str):
+        await ctx.response.defer()
+        隊長dcid = ctx.author
+
+        ## 確認是否有重複報名
+        if len(signupsheet.find(隊長dcid.name)) != 0:
+            await ctx.followup.send(f"<@{隊長dcid.id}> 重複報名，請確認隊伍名單，如有問題起聯絡管理員", ephemeral=True)
+            return
+
+        if len(signupsheet.find(隊員dcid.name)) != 0:
+            await ctx.followup.send(f"<@{隊員dcid.id}> 重複報名，請確認隊伍名單，如有問題起聯絡管理員", ephemeral=True)
+            return
+
+        ## 隊名是否有重複
+        if 隊名 in df['隊伍名稱'].values:
+            await ctx.followup.send("隊名已存在，請選擇其他隊名，如有問題起聯絡管理員。", ephemeral=True)
+            return
+
+        ## 創建隊伍身分組
+        team_role = await ctx.guild.create_role(name=隊名, color=discord.Color.dark_grey())
+        await 隊長dcid.add_roles(team_role)
+        await 隊員dcid.add_roles(team_role)
+
+        ## 提供身分組給隊長
+        leader_role = ctx.guild.get_role(1230786345291616292)
+        await 隊長dcid.add_roles(leader_role)
+
+        ## 寫進Google Sheet
+        signupsheet.update_value(f'A{row}', f'{隊名}')  
+        signupsheet.update_value(f'B{row}', f'{隊長dcid.name}') 
+        signupsheet.update_value(f'C{row}', f'{隊長r6id}')  
+        signupsheet.update_value(f'D{row}', f'{隊員dcid.name}')  
+        signupsheet.update_value(f'E{row}', f'{隊員r6id}') 
+        signupsheet.update_value(f'F{row}', '參賽')   
+
+        embed = discord.Embed(title="報名成功!", color=discord.Color.random())
+        embed.add_field(name="請確認下方資訊是否有誤\n如有問題或是需要跟換隊員請通知官方人員", value="", inline=False)
+        embed.add_field(name="隊伍名稱", value=隊名, inline=False)
+        embed.add_field(name="隊長 DiscordID", value=隊長dcid.name, inline=False)
+        embed.add_field(name="隊長 遊戲ID", value=隊長r6id, inline=False)
+        embed.add_field(name="隊員2 DiscordID", value=隊員dcid.name, inline=False)
+        embed.add_field(name="隊員2 遊戲ID", value=隊員r6id, inline=False)
+
+        await ctx.followup.send(embeds=[embed], ephemeral=True)
 
     ## TODO : 1. 點選後抓取使用者的RoleID，之後再寫入Google Sheet
     @commands.slash_command()
@@ -50,15 +95,40 @@ class SignUp(commands.Cog):
         view = CheckInView()
         await ctx.respond(embed=embed, view=view)
 
-    ## TODO : 1. 點選後抓取使用者RoleID，之後再去寫入Google Sheet
     @commands.slash_command()
     async def 取消參賽(self, ctx):
-        embed = discord.Embed(title="確認退出比赛", description=f"您確定要退出比赛嗎？", color=discord.Color.red())
-        view = ConfirmationView("")
-        await ctx.respond(embed=embed, view=view, ephemeral=True)
-        await view.wait()
-        if view.value is None:
-            await ctx.respond("超過時間，操作結束。", ephemeral=True)
+        await ctx.response.defer()
+        ## 隊長身分組
+        role = ctx.guild.get_role(1230786345291616292)
+        member = ctx.author
+
+        # 檢查是否有角色
+        if role in member.roles:
+            embed = discord.Embed(title="確認退出比赛", description=f"您確定要退出比賽嗎？", color=discord.Color.red())
+            view = ConfirmationView()
+            await ctx.respond(embed=embed, view=view, ephemeral=True)
+            await view.wait()
+            if view.value is True:
+                df = pd.DataFrame(values[1:], columns=values[0]) 
+
+                # 找到需要更新的行
+                row = signupsheet.find(ctx.author.name)[0].row
+
+                # 更新 Google Sheet 中的行
+                signupsheet.update_value(f'F{row}', '取消')   
+                team_role_value = signupsheet.get_value(f'A{row}')
+                team_role = discord.utils.get(ctx.guild.roles, name=team_role_value)
+                await team_role.delete()
+                await member.remove_roles(role)
+                await ctx.followup.send("您已成功退出比赛。", ephemeral=True)
+
+            elif view.value is False:
+                await ctx.followup.send("操作已取消。", ephemeral=True)
+
+            else:
+                await ctx.followup.send("超過時間，操作結束。", ephemeral=True)
+        else:
+            await ctx.followup.send("你不是隊長無法操作這個動作", ephemeral=True)
 
 # 報到用
 class CheckInView(View):
@@ -77,24 +147,23 @@ class CheckInView(View):
         checkin.update_value(f'A{row}', f'{interaction.user.display_name}')  
 
         await interaction.followup.send("報到成功", ephemeral=True)
-# 報到用按鈕
+
+# 取消參賽用按鈕
 class ConfirmationView(View):
-    def __init__(self, team_name):
+    def __init__(self):
         super().__init__(timeout=60)  
-        self.team_name = team_name
         self.value = None
 
     @discord.ui.button(label="是", style=discord.ButtonStyle.green)
     async def confirm(self, button: Button, interaction: discord.Interaction):
         self.value = True
         self.stop()
-        await interaction.response.send_message(f"已成功退出比赛", ephemeral=True)
 
     @discord.ui.button(label="否", style=discord.ButtonStyle.grey)
     async def cancel(self, button: Button, interaction: discord.Interaction):
         self.value = False
         self.stop()
-        await interaction.response.send_message("操作已取消", ephemeral=True)
+
 # 報名用按鈕
 class SignUpView(discord.ui.Modal):
     def __init__(self, *args, **kwargs):

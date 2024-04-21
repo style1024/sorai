@@ -20,33 +20,21 @@ sheet = gc.open_by_url(f'https://docs.google.com/spreadsheets/d/{id}/edit?usp=sh
 signupsheet =  sheet[0]
 checkin = sheet[1]
 
-## Google Sheet
-values = signupsheet.get_all_values()
-df = pd.DataFrame(values[0:], columns=values[0])
-end_row = df[df["隊伍名稱"].isin([""])].head(1).index.values[0]
-row = end_row + 1  #最後一欄
-
 class SignUp(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-
-    @commands.slash_command(description='報名程序說明')
-    async def 報名須知(self, ctx):
-        Embed = discord.Embed(title="SORAI Unite",
-                            description="SORAI Unite社群比賽報名須知",
-                            color=discord.Color.random())
-        Embed.add_field(name="/報名", value="根據畫面指示輸入資料完成報名手續，完成後會有成功訊息", inline=False)
-        Embed.add_field(name="/取消參賽",value="點選點選畫面上按鈕完成取消參賽手續",inline=False)
-        Embed.add_field(name="", value="", inline=False)
-        Embed.add_field(name="如有任何問題都可以詢問管理人員", value="", inline=False)
-        await ctx.respond(embed=Embed, ephemeral=True)
 
     @commands.slash_command(description='報名參加比賽')
     async def 報名(self, ctx, 隊長r6id: str, 隊員dcid: discord.Member, 隊員r6id: str, 隊名: str):
         隊長dcid = ctx.author
         await ctx.defer(ephemeral=True)
 
+        ## 確認是否有重複報名
+        if 隊長dcid == 隊員dcid:
+            await ctx.followup.send(f"隊長ID會自動抓取，不用輸入自己的DCID，只需提供另一隊隊友的DCID即可", ephemeral=True)
+            return
+        
         ## 確認是否有重複報名
         if len(signupsheet.find(隊長dcid.name)) != 0:
             await ctx.followup.send(f"<@{隊長dcid.id}> 重複報名，請確認隊伍名單，如有問題起聯絡管理員", ephemeral=True)
@@ -92,7 +80,6 @@ class SignUp(commands.Cog):
 
         await ctx.followup.send(embeds=[embed], ephemeral=True)
 
-    ## TODO : 1. 點選後抓取使用者的RoleID，之後再寫入Google Sheet
     @commands.slash_command()
     async def 報到(self, ctx):
         embed = discord.Embed(title="報到按鈕", description="這是一個Embed帶有按鈕", color=discord.Color.blue())
@@ -102,6 +89,13 @@ class SignUp(commands.Cog):
     @commands.slash_command()
     async def 取消參賽(self, ctx):
         await ctx.defer(ephemeral=True)
+
+        ## Google Sheet
+        values = signupsheet.get_all_values()
+        df = pd.DataFrame(values[0:], columns=values[0])
+        end_row = df[df["隊伍名稱"].isin([""])].head(1).index.values[0]
+        row = end_row + 1  #最後一欄
+
         ## 隊長身分組
         role = ctx.guild.get_role(1230786345291616292)
         member = ctx.author

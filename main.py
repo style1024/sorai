@@ -29,9 +29,15 @@ async def load():
       except Exception as e:
         print(f"Error loading extension {filename[:-3]}: {e}")
 
+@bot.slash_command()
+async def reload(ctx, extension):
+    bot.reload_extension(f'cmds.{extension}')
+    await ctx.respond(f'Reloading {extension} done!')
+
+
 async def main():
   await load()
 
 if __name__ == "__main__":
   asyncio.run(main())
-  bot.run(data['TOKEN'])
+  bot.run(data['TOKEN1'])

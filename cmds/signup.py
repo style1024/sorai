@@ -98,9 +98,6 @@ class SignUp(commands.Cog):
 
         ## Google Sheet
         values = signupsheet.get_all_values()
-        df = pd.DataFrame(values[0:], columns=values[0])
-        end_row = df[df["隊伍名稱"].isin([""])].head(1).index.values[0]
-        row = end_row + 1  #最後一欄
 
         ## 隊長身分組
         role = ctx.guild.get_role(1230786345291616292)

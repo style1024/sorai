@@ -60,6 +60,11 @@ class SignUp(commands.Cog):
         await 隊長dcid.add_roles(team_role)
         await 隊員dcid.add_roles(team_role)
 
+        ## 提供玩家身分組
+        player_role = ctx.guild.get_role(1231795447123804170)
+        await 隊長dcid.add_roles(player_role)
+        await 隊員dcid.add_roles(player_role)
+
         ## 提供身分組給隊長
         leader_role = ctx.guild.get_role(1230786345291616292)
         await 隊長dcid.add_roles(leader_role)
@@ -88,7 +93,7 @@ class SignUp(commands.Cog):
 
     @commands.slash_command()
     async def 報到(self, ctx):
-        embed = discord.Embed(title="報到按鈕", description="這是一個Embed帶有按鈕", color=discord.Color.blue())
+        embed = discord.Embed(title="報到按鈕", description="請於時間內報到", color=discord.Color.blue())
         view = CheckInView()
         await ctx.respond(embed=embed, view=view)
 
@@ -141,13 +146,28 @@ class CheckInView(View):
         await interaction.response.defer()
 
         values = checkin.get_all_values()
-        df = pd.DataFrame(values[0:], columns=values[0])
+        df = pd.DataFrame(values[1:], columns=values[0])
         end_row = df[df["已報到隊伍"].isin([""])].head(1).index.values[0]
-        row = end_row + 1  #最後一欄
+        row = end_row + 2  # 最後一欄
+        
+        ## 尋找隊伍身分組
+        role_color = discord.Color.dark_grey()
+        gray_role = next((role for role in interaction.user.roles if role.color == role_color), None)
+        
+        ## 更新報到表單
+        if gray_role:
 
-        checkin.update_value(f'A{row}', f'{interaction.user.display_name}')  
-
-        await interaction.followup.send("報到成功", ephemeral=True)
+            ## 處理重複報到
+            if gray_role.name in df['已報到隊伍'].values:
+                await interaction.followup.send("隊伍已經報到完成，不需重複報到", ephemeral=True)
+                return
+            else:
+                checkin.update_value(f'A{row}', f'{gray_role.name}')
+                await interaction.followup.send("報到成功", ephemeral=True)
+                return
+        else:
+            await interaction.followup.send("你沒有報名比賽", ephemeral=True)
+            return
 
 # 取消參賽用按鈕
 class ConfirmationView(View):
